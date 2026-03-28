@@ -1,0 +1,19 @@
+{
+  "name": "mealdb-cli",
+  "version": "1.0.0",
+  "description": "CLI for TheMealDB recipe API",
+  "bin": {
+    "mealdb": "bin/mealdb.js",
+    "meal-cart": "bin/meal-cart.js"
+  },
+  "keywords": [
+    "recipes",
+    "food",
+    "cli",
+    "api"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "picnic-api": "^4.1.0"
+  }
+}

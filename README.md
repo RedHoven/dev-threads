@@ -1,162 +1,189 @@
-# dev-threads
+# picky
 
-Spin up ephemeral VMs with Claude Code inside via **boxd** and run user-defined tasks programmatically.
+**From recipe to shopping cart in one conversation.**
 
-```python
-from dev_threads import run_task
+Picky combines [TheMealDB](https://www.themealdb.com/api.php) recipes with [Picnic](https://picnic.app) grocery delivery — search for meals, pick what you want, and have the ingredients added to your Picnic cart automatically.
 
-result = await run_task("Add docstrings to every public function in src/")
-print(result.output)
+```
+"I want to cook dinner for 4 tonight"  →  🍽️ Recipe  →  🛒 Picnic Cart  →  📦 Order
 ```
 
 ---
 
-## How it works
+## What's inside
 
-1. **Create** a fresh container on boxd (Docker-compatible API)
-2. **Start** it — `claude --print "<your task>"` runs inside
-3. **Wait** for Claude Code to finish
-4. **Collect** the output
-5. **Remove** the container
-
-Every task gets its own isolated VM. No state leaks between runs.
-
----
-
-## Install
-
-```bash
-pip install -e .
 ```
-
-Requires Python ≥ 3.11 and a running [boxd](https://boxd.dev) endpoint.
+picky/
+├── mealdb/                    # Node.js CLI tools
+│   ├── bin/
+│   │   ├── mealdb.js          # TheMealDB recipe browser
+│   │   └── meal-cart.js       # Recipe → Picnic cart pipeline
+│   ├── package.json
+│   └── skills/                # OpenClaw agent skills
+│       ├── meal-planner/      # Full conversational meal planning flow
+│       └── picnic-recipe/     # Picnic + TheMealDB integration spec
+└── src/dev_threads/           # Python VM orchestration (existing)
+```
 
 ---
 
 ## Quick start
 
+### Install the CLI
+
 ```bash
-cp .env.example .env
-# set ANTHROPIC_API_KEY and BOXD_ENDPOINT
+cd mealdb
+npm install
+npm link    # makes `mealdb` available globally
 ```
 
-### Single task
+### Browse recipes
 
-```python
-from dev_threads import run_task
+```bash
+# Search by name
+mealdb search pasta
 
-result = await run_task("Refactor the auth module to use async/await")
-print(result.output)   # Claude Code's full output
-print(result.success)  # True if exit code == 0
+# Get full recipe with ingredients & instructions
+mealdb get 52772
+
+# Random meal — surprise me
+mealdb random
+
+# Filter by category, cuisine, or ingredient
+mealdb filter -c Chicken
+mealdb filter -a Italian
+mealdb filter -i salmon
+
+# List available categories, areas, ingredients
+mealdb list categories
+mealdb list areas
+mealdb list ingredients
 ```
 
-### Reuse a runner across multiple tasks
+### Build a Picnic shopping cart
 
-```python
-from dev_threads import TaskRunner
+```bash
+# Dry run — see what would be searched
+node mealdb/bin/meal-cart.js 53161 --people 4 --dry-run
 
-async with TaskRunner() as runner:
-    result = await runner.run("Write unit tests for utils.py")
-    print(result.output)
+# Live — search Picnic and show matches
+PICNIC_EMAIL=you@example.com PICNIC_PASSWORD=secret \
+  node mealdb/bin/meal-cart.js 53161 --people 4
+
+# Full send — search + add to your cart
+PICNIC_EMAIL=you@example.com PICNIC_PASSWORD=secret \
+  node mealdb/bin/meal-cart.js 53161 --people 4 --add-to-cart
 ```
 
-### Run many tasks concurrently
+**Note:** Picnic requires SMS 2FA verification on first login. The tool will prompt you for the code.
 
-```python
-tasks = [
-    "Add type hints to models.py",
-    "Write a README for the billing module",
-    "Refactor database.py to use connection pooling",
-]
+---
 
-results = await runner.run_many(tasks, concurrency=3)
-for r in results:
-    print(r.task, "→", "✓" if r.success else "✗")
-```
+## How it works
 
-### Stream output live
+### 1. Search recipes
+The `mealdb` CLI wraps the free [TheMealDB API](https://www.themealdb.com/api.php). Search by name, filter by category/cuisine/ingredient, or get a random meal. Full recipe details include ingredients, quantities, and step-by-step instructions.
 
-```python
-async for chunk in runner.stream("Explain this codebase"):
-    print(chunk, end="", flush=True)
-```
+### 2. Normalize ingredients
+`meal-cart.js` parses the raw TheMealDB ingredient data (`strIngredient1..20`, `strMeasure1..20`) and normalizes quantities into canonical units (grams, milliliters, count). It scales proportions based on servings.
 
-### Keep the VM on failure (for debugging)
+### 3. Match to Picnic products
+Each ingredient is searched against Picnic's catalog using their API. The tool shows the best match plus alternatives, so you can swap if needed.
 
-```python
-result = await runner.run("tricky task", keep_vm_on_error=True)
-# VM is still alive — inspect it manually
+### 4. Add to cart
+With `--add-to-cart`, products are added directly to your Picnic cart. Open the app to review and place your order.
+
+### 5. Output
+Every run produces a structured JSON payload:
+
+```json
+{
+  "recipe": { "name": "Chicken & chorizo rice pot", "id": "53161" },
+  "cart": [
+    {
+      "ingredient": "Chicken",
+      "product_id": "s1014735",
+      "product_name": "'t Slagershuys kipfilets",
+      "quantity": 1
+    }
+  ],
+  "total_eur": 28.50,
+  "unmatched": []
+}
 ```
 
 ---
 
-## Configuration
+## CLI reference
 
-Set via environment variables or a `.env` file:
+### `mealdb`
 
-| Variable | Description | Default |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | Forwarded into every Claude Code VM | – |
-| `BOXD_ENDPOINT` | boxd API URL | `http://localhost:2375` |
-| `BOXD_VM_IMAGE` | Container image with `claude` on PATH | `ghcr.io/anthropics/claude-code:latest` |
-| `TASK_TIMEOUT` | Seconds before a task times out | `300` |
+| Command | Description |
+|---|---|
+| `mealdb search <query>` | Search meals by name |
+| `mealdb get <id>` | Full recipe details by ID |
+| `mealdb random` | Random meal |
+| `mealdb letter <a-z>` | Browse by first letter |
+| `mealdb categories` | List all categories |
+| `mealdb filter -i <ingredient>` | Filter by ingredient |
+| `mealdb filter -c <category>` | Filter by category (e.g. Seafood) |
+| `mealdb filter -a <area>` | Filter by cuisine (e.g. Italian) |
+| `mealdb list areas\|categories\|ingredients` | Browse filters |
+| `mealdb help [command]` | Show help |
 
-All settings can also be passed directly to `TaskRunner(...)` or `run_task(...)`.
+### `meal-cart.js`
+
+| Flag | Description |
+|---|---|
+| `<meal-id>` | TheMealDB recipe ID (required) |
+| `--people <n>` | Number of servings (default: 4) |
+| `--dry-run` | Show what would be searched (no Picnic auth needed) |
+| `--add-to-cart` | Add matched products to your Picnic cart |
+
+**Environment variables:**
+- `PICNIC_EMAIL` — your Picnic account email
+- `PICNIC_PASSWORD` — your Picnic account password
 
 ---
 
-## API reference
+## Agent skills
 
-### `run_task(task, *, endpoint, image, anthropic_api_key, env, labels, timeout, keep_vm_on_error) → TaskResult`
+Picky includes two [OpenClaw](https://github.com/openclaw/openclaw) agent skills:
 
-One-shot convenience function. Creates a `TaskRunner`, runs one task, tears it down.
+### `meal-planner`
+A conversational flow for the full recipe-to-cart pipeline. Handles clarification questions, recipe search, user selection, Picnic product matching, 2FA auth, and cart management.
 
-### `TaskRunner`
+### `picnic-recipe`
+A structured specification for building meal plans that combine Picnic product data with TheMealDB recipes. Includes input/output contracts, normalization rules, and evaluation criteria.
 
-```python
-runner = TaskRunner(endpoint=..., image=..., anthropic_api_key=..., timeout=...)
+To use with OpenClaw, copy the `skills/` directory to your workspace.
 
-await runner.run(task, *, env, labels, image, keep_vm_on_error) → TaskResult
-await runner.run_many(tasks, *, concurrency, **run_kwargs)       → list[TaskResult]
-runner.stream(task, *, env, labels, image)                       → AsyncIterator[str]
-```
+---
 
-### `TaskResult`
+## Dependencies
 
-```python
-result.task       # str  – original task description
-result.output     # str  – combined stdout + stderr
-result.exit_code  # int  – container exit code
-result.vm_id      # str  – container ID
-result.success    # bool – exit_code == 0
-```
-
-### `BoxdClient`
-
-Lower-level async client for the boxd Docker-compatible API. Use this directly when you need fine-grained control over the VM lifecycle.
-
-```python
-async with BoxdClient(endpoint=..., image=...) as client:
-    vm_id = await client.create_vm(command=[...], env={...})
-    await client.start_vm(vm_id)
-    exit_code = await client.wait_vm(vm_id)
-    logs = await client.get_logs(vm_id)
-    await client.remove_vm(vm_id)
-```
+- **Node.js** ≥ 18
+- **TheMealDB API** — free, no API key needed (test key `1`)
+- **Picnic account** — for shopping cart features ([picnic.app](https://picnic.app))
+- **picnic-api** — npm package ([github.com/MRVDH/picnic-api](https://github.com/MRVDH/picnic-api))
 
 ---
 
 ## Development
 
 ```bash
-pip install -e ".[dev]"
-pytest
-ruff check src tests
-mypy src
+cd mealdb
+npm install
+
+# Test mealdb CLI
+mealdb search chicken
+
+# Test cart pipeline (dry run)
+node bin/meal-cart.js 53161 --people 4 --dry-run
 ```
 
 ---
 
 ## License
 
-MIT – see [LICENSE](LICENSE).
+MIT
