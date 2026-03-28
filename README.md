@@ -22,7 +22,7 @@ picky/
 │   └── skills/                # OpenClaw agent skills
 │       ├── meal-planner/      # Full conversational meal planning flow
 │       └── picnic-recipe/     # Picnic + TheMealDB integration spec
-└── src/dev_threads/           # Python VM orchestration (existing)
+└── README.md
 ```
 
 ---
