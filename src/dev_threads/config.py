@@ -1,8 +1,6 @@
-"""Application-wide settings loaded from environment / .env file."""
+"""Minimal settings for dev-threads."""
 
 from __future__ import annotations
-
-from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -14,26 +12,10 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # OpenClaw / kiloclaw
-    openclaw_api_key: str = ""
-    openclaw_base_url: str = "https://api.kiloclaw.io"
-
-    # boxd
+    anthropic_api_key: str = ""
     boxd_endpoint: str = "http://localhost:2375"
-    boxd_vm_image: str = "claude-code:latest"
-
-    # Context persistence
-    context_store_path: Path = Path("~/.dev-threads/contexts")
-
-    # Voice
-    voice_wake_word: str = "hey threads"
-    voice_language: str = "en-US"
-
-    # Logging
-    log_level: str = "INFO"
-
-    def expanded_context_store_path(self) -> Path:
-        return self.context_store_path.expanduser()
+    boxd_vm_image: str = "ghcr.io/anthropics/claude-code:latest"
+    task_timeout: float = 300.0
 
 
 _settings: Settings | None = None
