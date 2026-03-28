@@ -16,18 +16,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8",
-    "pytest-anyio>=0.0.0",
-    "pytest-mock>=3",
     "ruff>=0.4",
     "mypy>=1.10",
 ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/dev_threads"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 99
