@@ -1,0 +1,55 @@
+version: "3.9"
+
+services:
+  # ── Main dev-threads orchestrator ─────────────────────────────────────────
+  dev-threads:
+    build: .
+    command: python -m dev_threads
+    env_file: .env
+    environment:
+      BOXD_ENDPOINT: http://mock-boxd:2375
+    depends_on:
+      - mock-boxd
+    volumes:
+      - context-data:/root/.dev-threads/contexts
+    stdin_open: true
+    tty: true
+
+  # ── Mock boxd service (useful for local development) ──────────────────────
+  # Replace with a real boxd endpoint in production.
+  mock-boxd:
+    image: python:3.11-slim
+    command: >
+      python -c "
+      import http.server, json, threading, time
+
+      class Handler(http.server.BaseHTTPRequestHandler):
+          def do_GET(self):
+              self.send_response(200)
+              self.send_header('Content-Type', 'application/json')
+              self.end_headers()
+              self.wfile.write(json.dumps({'status': 'ok'}).encode())
+
+          def do_POST(self):
+              length = int(self.headers.get('Content-Length', 0))
+              body = self.rfile.read(length)
+              vm_id = 'mock-vm-' + str(int(time.time()))
+              resp = {'id': vm_id, 'status': 'running', 'ip': '127.0.0.1'}
+              self.send_response(201)
+              self.send_header('Content-Type', 'application/json')
+              self.end_headers()
+              self.wfile.write(json.dumps(resp).encode())
+
+          def do_DELETE(self):
+              self.send_response(204)
+              self.end_headers()
+
+          def log_message(self, *a): pass
+
+      http.server.HTTPServer(('0.0.0.0', 2375), Handler).serve_forever()
+      "
+    ports:
+      - "2375:2375"
+
+volumes:
+  context-data:
